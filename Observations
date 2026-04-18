@@ -1,1 +1,47 @@
+# 📝 Observations — AI Fairness & Bias (Adult Census Dataset)
 
+---
+
+## Observation 1 — EDA & Underrepresentation
+
+The dataset exhibits significant demographic imbalance across all three protected attributes. In terms of gender, Males make up roughly 67% of the records while Females account for only 33%, meaning the dataset contains about twice as many male observations as female ones. The income disparity is even more striking: 30.57% of Males earn above 50K compared to just 10.95% of Females, nearly a threefold gap.
+
+For race, the imbalance is extreme — White individuals constitute 85.43% of the dataset, leaving all four minority groups well below the balanced threshold of 20%. Amer-Indian-Eskimo (0.96%) and Other (0.83%) are the most severely underrepresented, each making up less than 1% of total records. Despite this, Asian-Pac-Islander individuals show a relatively high income rate (26.56%), comparable to White (25.59%), while the remaining minority groups fall between 9% and 12%.
+
+Age-wise, the middle brackets (26–35 and 36–45) are adequately represented, but the youngest (≤25 at 19.69%) and oldest (56+ at 12.56%) groups fall below the balanced 20% mark. Income rates rise steadily with age, peaking at 39.83% for the 46–55 bracket, before declining to 28.27% for those over 56. The youngest group has an income rate of only 1.78%, reflecting the early-career stage of that demographic. These imbalances are important because any model trained on this data will have far more examples to learn from for the majority groups, potentially leading to biased predictions for underrepresented populations.
+
+---
+
+## Observation 2 — Baseline Model Training
+
+The Decision Tree outperforms Logistic Regression in overall accuracy (85.60% vs 82.63%), which is expected given that tree-based models can capture non-linear feature interactions without explicit feature engineering. Both models, however, show a clear performance asymmetry between the two classes: the majority class (<=50K) achieves strong precision and recall across both classifiers, while the minority class (>50K) suffers from considerably lower recall. In the Logistic Regression, the model correctly identifies only 46% of actual high-income individuals (recall for >50K), meaning more than half of them are misclassified as low-income. The Decision Tree improves this to 56%, but the gap remains substantial.
+
+This class-level disparity is a direct consequence of the 75/25 class imbalance — the models are incentivized to predict the majority class more often since doing so maximizes overall accuracy. At this stage, we have not yet examined whether these errors are distributed equally across demographic groups or whether certain protected groups bear a disproportionate share of the misclassifications. That analysis follows in the fairness check.
+
+---
+
+## Observation 3 — Fairness Across Groups
+
+The per-group metrics reveal clear disparities in how the baseline Logistic Regression treats different demographic subgroups. For gender, the recall gap is the most concerning finding: the model identifies only 22.91% of high-income Females compared to 50.00% of high-income Males. This means that for every two high-income men the model correctly flags, it misses more than three out of four high-income women. Interestingly, precision for Females (73.21%) is actually slightly higher than for Males (71.68%), meaning that when the model does predict a woman as high-income it tends to be correct — it is simply far too conservative in making that prediction for women in the first place.
+
+Across racial groups, a similar pattern emerges. The "Other" category achieves perfect precision (1.00) but only 37.50% recall, indicating the model almost never predicts high income for this group, yet when it does, it is always right. Black individuals face the lowest recall at 34.11%, while White individuals have a moderate recall of 46.68% — the highest among all racial groups in absolute terms but still below 50%. The small sample sizes for Amer-Indian-Eskimo (100) and Other (73) make their metrics less statistically reliable but still directionally informative.
+
+For age, the pattern aligns with intuition: the youngest group (≤25) has very high precision (83.33%) but extremely low recall (27.03%), reflecting the rarity of high earners at that age. The 46–55 bracket shows the best balance between precision (77.28%) and recall (53.69%). The 56+ group is notable for having the most balanced precision-recall trade-off (61.34% / 60.29%), suggesting the model treats older individuals somewhat more equitably despite their smaller sample size.
+
+---
+
+## Observation 4 — Mitigation via Sample Reweighting
+
+The reweighting strategy assigns Female samples a weight of 1.505× and Male samples 0.749×, effectively telling the optimizer to penalize Female misclassifications more heavily. The overall accuracy drops only marginally from 82.63% to 82.42% (a cost of just 0.21 percentage points), which is a very modest trade-off.
+
+Looking at the gender-level metrics, the Female precision improved from 73.21% to 78.26%, meaning the model became more confident and accurate when it does predict a woman as high-income. Female recall rose slightly from 22.91% to 25.14%, and the F1 score improved from 0.3489 to 0.3805. For Males, precision stayed nearly flat (71.68% → 71.21%) while recall decreased slightly from 50.00% to 47.99%. The net effect is a narrowing of the precision gap between genders — the Female precision now exceeds Male precision by about 7 points, compared to roughly 1.5 points before — while the recall gap, though still present, shows the model is becoming less biased in its positive predictions.
+
+Across racial groups, the reweighting (applied on gender) produced an interesting secondary effect: the "Other" category saw its recall jump from 37.50% to 50.00%, and Black recall improved slightly from 34.11% to 35.66%. These cross-attribute improvements suggest that gender reweighting partially addresses intersectional imbalances, though a more comprehensive mitigation strategy would apply reweighting across multiple protected attributes simultaneously. Overall, the reweighting demonstrates that meaningful fairness improvements are achievable with negligible accuracy cost, supporting the case for fairness-aware training as a default practice rather than an optional add-on.
+
+---
+
+## Observation 5 — Accuracy vs Fairness
+
+Optimizing for raw accuracy alone perpetuates historical biases because the model learns patterns from data that already reflects societal inequalities. In the Adult dataset, the baseline classifier is measurably better at identifying high-income individuals when they are male — the recall gap of nearly 27 percentage points (50.00% vs 22.91%) confirms a systematic disadvantage for women in the model's predictions.
+
+Reweighting narrows this gap at a minimal accuracy cost of just 0.21%. Neither extreme — pure accuracy nor pure fairness — is ideal. The recommended approach is to treat fairness as a constraint: maximize accuracy subject to acceptable fairness thresholds such as equalized odds or demographic parity. A balanced strategy considers the domain context (healthcare vs. advertising carry different stakes), legal requirements (anti-discrimination laws may mandate equitable treatment), stakeholder impact (who is harmed by prediction errors and how severely), and transparent per-group reporting so that decision-makers can evaluate trade-offs explicitly rather than relying on a single aggregate accuracy number that masks disparities beneath the surface.
